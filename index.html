@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>faew.dev</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Tiny5&display=swap" rel="stylesheet">
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+
+      font-family: "Tiny5", sans-serif;
+      font-weight: 400;
+      font-style: normal;
+      font-smooth: never;
+      -webkit-font-smoothing: none;
+    }
+
+    body {
+      height: 100vh;
+      max-height: 100%;
+      overflow: hidden;
+    }
+
+    main {
+      display: flex;
+    }
+
+    canvas {
+      width: 100vw;
+      height: 100vh;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    .config {
+      background-color: #1e1e2e;
+      padding-inline: 1rem;
+      padding-top: 0.5rem;
+      min-width: 12rem;
+
+      img {
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        position: absolute;
+        bottom: 0;
+      }
+    }
+
+    h1, h2, label {
+      color: #cdd6f4;
+      margin-bottom: 0.5rem;
+    }
+
+    section {
+      margin-top: 1rem;
+    }
+
+    .palette-selector .palette.selected,
+    .palette-selector .palette:hover {
+      &::after, &::before {
+        font-size: 16px;
+        font-weight: bold;
+        position: absolute;
+        color: #a6e3a1;
+      }
+
+      &::before {
+        content: '>';
+        left: 0;
+      }
+
+      &::after {
+        content: '<';
+        right: 0;
+      }
+    }
+
+    .palette-selector .palette:hover {
+      &::after, &::before {
+        color: #f9e2af;
+      }
+    }
+
+    .palette {
+      padding-inline: 2ch;
+      display: flex;
+      appearance: none;
+      border: none;
+      width: 100%;
+      height: 1rem;
+      align-items: stretch;
+      background-color: transparent;
+      position: relative;
+      cursor: pointer;
+    }
+
+    .palette-swatch {
+      display: inline-block;
+      flex-grow: 1;
+      background-color: currentColor;
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <div class="config">
+      <h1>plant maker</h1>
+      <section>
+        <section>
+          <h2>stems</h2>
+          <div class="palette-selector" id="stemPaletteSelector"></div>
+        </section>
+        <section>
+          <h2>flowers</h2>
+          <div class="palette-selector" id="flowerPaletteSelector"></div>
+        </section>
+      </section>
+      <img src="deco1.png" width="72" />
+      <img src="deco2.png" width="84" style="left: 5.6rem;" />
+    </div>
+    
+    <canvas id="canvas"></canvas>
+  </main>
+
+  <script>
+
+    const STEM_PALETTES = {
+      "green": ["#5f913b", "#6fa34c", "#82b75f", "#93c572"],
+      "yellow": ["#91843b","#a3a14c","#b7b15f","#b3c572"],
+      "red": ["#914f3b", "#a3674c", "#b7825f", "#c59a72"],
+      "brown": ["#4B2A18", "#5A3C26", "#6A5136", "#766245"],
+      "teal": ["#359988", "#52AFA0", "#73C6B8", "#94E2D5"],
+      "pink": ["#EA96D5", "#F2A9E0", "#F5C2E7", "#FFDDF6"],
+      "swampy": ["#5B4C21", "#777735", "#899B45", "#83AA57"],
+    }
+
+    const FLOWER_PALETTES = {
+      "blue": ["#94e2d5", "#89b4fa"],
+      "lavender": ["#89b4fa", "#b4befe"],
+      "purple": ["#b4befe", "#cba6f7"],
+      "pink": ["#cba6f7", "#f5c2e7"],
+      "palePink": ["#f5c2e7", "#f2cdcd"],
+      "salmon": ["#f2cdcd", "#fab387"],
+      "lesbian": ["#fab387", "#eba0ac", "#f38ba8"],
+      "gay": ["#a6e3a1", "#94e2d5", "#89dceb"],
+      "dead": ["#766245", "#938460"],
+    }
+    
+    const PIXEL_SIZE = 10
+
+    /** @type {HTMLCanvasElement} */
+    const htmlCanvas = document.querySelector("#canvas")
+    const width = htmlCanvas.width = Math.ceil(document.body.getBoundingClientRect().width / PIXEL_SIZE)
+    const height = htmlCanvas.height = Math.ceil(document.body.getBoundingClientRect().height / PIXEL_SIZE)
+
+    const config = {
+      pixelSize: PIXEL_SIZE,
+      bgColor: "#f0fff0",
+      branchChance: 0.05,
+      stemMaxAge: 100,
+      stemCurviness: 5,
+      stemMinBranchAngle: 1,
+      stemMaxBranchAngle: 2,
+      flowerChance: 0.05,
+      flowerMinHeight: 10,
+      flowerMaxOffset: 4,
+      petalCount: 11,
+      petalThickness: 5,
+      petalMaxLength: 5,
+      width,
+      height,
+    }
+
+    const canvas = htmlCanvas.transferControlToOffscreen()
+    const worker = new Worker("worker.js")
+
+    function restart() {
+      worker.postMessage({ event: "restart", config })
+    }
+
+    function createPalettes(palettes, type, onSelect) {
+      const attr = `${type}-palette`
+
+      Object.entries(palettes).forEach(([name, cols], i) => {
+        const palette = document.createElement("button")
+        palette.setAttribute(attr, name)
+        palette.classList.add("palette")
+
+        if (i === 0) {
+          palette.classList.add("selected")
+          onSelect(cols)
+        }
+
+        cols.forEach(col => {
+          const swatch = document.createElement("div")
+          swatch.classList.add("palette-swatch")
+          swatch.style.color = col;
+          palette.appendChild(swatch)
+        })
+        document.getElementById(type + "PaletteSelector").appendChild(palette)
+      })
+
+      document.querySelectorAll(`[${attr}]`)
+        .forEach(palette => {
+          const name = palette.getAttribute(attr)
+          palette.addEventListener("click", () => {
+            document.querySelectorAll(`[${attr}]`).forEach(p => p.classList.remove("selected"))
+            palette.classList.add("selected")
+            onSelect(palettes[name])
+            restart()
+          })
+        })
+    }
+
+    createPalettes(STEM_PALETTES, "stem", (cols) => config.stemColors = cols)
+    createPalettes(FLOWER_PALETTES, "flower", (cols) => config.petalColors = cols)
+    
+    worker.postMessage({ event: "start", canvas, config }, [canvas])
+  </script>
+</body>
+
+</html>
