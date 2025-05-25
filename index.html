@@ -45,22 +45,44 @@
       padding-inline: 1rem;
       padding-top: 0.5rem;
       min-width: 12rem;
+      height: 100vh;
+      max-height: 100%;
+      overflow-y: scroll;
+      padding-bottom: 6rem;
 
       img {
         image-rendering: pixelated;
         image-rendering: crisp-edges;
         position: absolute;
         bottom: 0;
+        z-index: 10;
+      }
+
+      &::after {
+        pointer-events: none;
+        content: '';
+        display: block;
+        position: absolute;
+        bottom: 0;
+        height: 7rem;
+        width: 12rem;
+        left: 0;
+        background: linear-gradient(180deg, transparent 0%, #1e1e2e 80%);
       }
     }
 
-    h1, h2, label {
+    h1, h2, h3, label {
       color: #cdd6f4;
       margin-bottom: 0.5rem;
     }
 
     section {
       margin-top: 1rem;
+    }
+
+    .palette-selector {
+      margin-top: 0.5rem;
+      margin-bottom: 0.75rem;
     }
 
     .palette-selector .palette.selected,
@@ -107,6 +129,47 @@
       flex-grow: 1;
       background-color: currentColor;
     }
+
+    .number-control {
+      display: flex;
+      font-size: 18pt;
+      align-items: center;
+      color: #89b4fa;
+      margin-bottom: 0.5rem;
+      margin-top: -2px;
+      
+      & :first-child {
+        flex-grow: 1;
+      }
+
+      & button {
+        appearance: none;
+        border: none;
+        background-color: transparent;
+        font-size: 24pt;
+        cursor: pointer;
+        border-radius: 0.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding-left: 0.5ch;
+        padding-right: 0.25ch;
+        line-height: 0.8;
+
+        &:hover {
+          filter: brightness(120%);
+          background-color: #1e1e2e;
+        }
+
+        &:nth-child(2) {
+          color: #f38ba8;
+        }
+
+        &:nth-child(3) {
+          color: #a6e3a1;
+        }
+      }
+    }
   </style>
 </head>
 
@@ -117,11 +180,49 @@
       <section>
         <section>
           <h2>stems</h2>
-          <div class="palette-selector" id="stemPaletteSelector"></div>
+          <label>
+            stem colour
+            <div class="palette-selector" id="stemPaletteSelector"></div>
+          </label>
+          <label>
+            branch chance
+            <div class="number-control" id="branchChance"></div>
+          </label>
+          <label>
+            curviness
+            <div class="number-control" id="stemCurviness"></div>
+          </label>
         </section>
         <section>
           <h2>flowers</h2>
-          <div class="palette-selector" id="flowerPaletteSelector"></div>
+          <label>
+            petal colour
+            <div class="palette-selector" id="flowerPaletteSelector"></div>
+          </label>
+          <label>
+            pistil colour
+            <div class="palette-selector" id="pistilPaletteSelector"></div>
+          </label>
+          <label>
+            flower chance
+            <div class="number-control" id="flowerChance"></div>
+          </label>
+          <label>
+            petal count
+            <div class="number-control" id="petalCount"></div>
+          </label>
+          <label>
+            petal length
+            <div class="number-control" id="petalMaxLength"></div>
+          </label>
+          <label>
+            petal thickness
+            <div class="number-control" id="petalThickness"></div>
+          </label>
+          <label>
+            min height
+            <div class="number-control" id="flowerMinHeight"></div>
+          </label>
         </section>
       </section>
       <img src="deco1.png" width="72" />
@@ -154,6 +255,13 @@
       "gay": ["#a6e3a1", "#94e2d5", "#89dceb"],
       "dead": ["#766245", "#938460"],
     }
+
+    const PISTIL_PALETTES = {
+      "yellow": ["#f9e2af"],
+      "orange": ["#fab387"],
+      "brown": ["#4C3821"],
+      "green": ["#a6e3a1"],
+    }
     
     const PIXEL_SIZE = 10
 
@@ -165,17 +273,10 @@
     const config = {
       pixelSize: PIXEL_SIZE,
       bgColor: "#f0fff0",
-      branchChance: 0.05,
       stemMaxAge: 100,
-      stemCurviness: 5,
       stemMinBranchAngle: 1,
       stemMaxBranchAngle: 2,
-      flowerChance: 0.05,
-      flowerMinHeight: 10,
       flowerMaxOffset: 4,
-      petalCount: 11,
-      petalThickness: 5,
-      petalMaxLength: 5,
       width,
       height,
     }
@@ -187,7 +288,7 @@
       worker.postMessage({ event: "restart", config })
     }
 
-    function createPalettes(palettes, type, onSelect) {
+    function createPalettes(type, palettes, onSelect) {
       const attr = `${type}-palette`
 
       Object.entries(palettes).forEach(([name, cols], i) => {
@@ -221,8 +322,53 @@
         })
     }
 
-    createPalettes(STEM_PALETTES, "stem", (cols) => config.stemColors = cols)
-    createPalettes(FLOWER_PALETTES, "flower", (cols) => config.petalColors = cols)
+    function createControl(name, initial, values, format) {
+      const control = document.getElementById(name)
+
+      const output = document.createElement("output")
+      control.appendChild(output)
+
+      const dec = document.createElement("button")
+      dec.innerText = "-"
+      dec.addEventListener("click", () => {
+        if (selected === 0) return;
+        setValue(selected - 1)
+      })
+      control.appendChild(dec)
+
+      const inc = document.createElement("button")
+      inc.innerText = "+"
+      inc.addEventListener("click", () => {
+        if (selected === values.length - 1) return;
+        setValue(selected + 1)
+      })
+      control.appendChild(inc)
+
+      function setValue(idx) {
+        selected = idx;
+        const value = values[idx]
+        output.innerText = format ? format(value) : value
+        config[name] = value;
+        restart()
+      }
+
+      let selected = values.indexOf(initial);
+      output.innerText = format ? format(initial) : initial
+      config[name] = initial;
+    }
+
+    createPalettes("stem", STEM_PALETTES, (cols) => config.stemColors = cols)
+    createControl("branchChance", 0.05, [0, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.2], val => val * 100 + "%")
+    createControl("stemCurviness", 5, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+
+
+    createPalettes("flower", FLOWER_PALETTES, (cols) => config.petalColors = cols)
+    createPalettes("pistil", PISTIL_PALETTES, (cols) => config.pistilColor = cols[0])
+    createControl("flowerChance", 0.1, [0, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4], val => val * 100 + "%")
+    createControl("flowerMinHeight", 30, [0, 10, 20, 30, 40, 50, 60])
+    createControl("petalCount", 11, [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20])
+    createControl("petalThickness", 5, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    createControl("petalMaxLength", 5, [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
     
     worker.postMessage({ event: "start", canvas, config }, [canvas])
   </script>

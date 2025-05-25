@@ -30,7 +30,7 @@ function drawFlowers(cfg, ctx) {
       if (type === "stem") {
         drawBlob(x, y, size, cfg.stemColors[Math.min(Math.floor(age / cfg.stemMaxAge * 6), cfg.stemColors.length - 1)]);
       } else if (type === "flower") {
-        const col = age < 20 ? cfg.stemColors[Math.floor(age / 5)] : "#f9e2af"
+        const col = age < 20 ? cfg.stemColors[Math.floor(age / 5)] : cfg.pistilColor
         drawBlob(x, y, 2, col)
       } else if (type === "petal") {
         const bx = x + Math.cos(Math.PI * 2 * dir) * age
